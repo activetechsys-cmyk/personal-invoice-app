@@ -1,36 +1,37 @@
 
-export interface Client {
-  id: number;
+export interface BusinessProfile {
   name: string;
+  address: string;
   email: string;
   phone: string;
-  address: string;
+  taxId: string;
+  logoUri?: string;
+  signatureUri?: string;
 }
 
 export interface InvoiceItem {
-  id?: number;
+  id: string;
   description: string;
   quantity: number;
   unitPrice: number;
 }
 
 export interface Invoice {
-  id: number;
-  clientId: number;
+  id: string;
   invoiceNumber: string;
+  clientId: string;
   dateIssued: string;
   dateDue: string;
+  items: InvoiceItem[];
   taxRate: number;
   discountRate: number;
   notes: string;
-  items: InvoiceItem[];
 }
 
-export interface BusinessProfile {
+export interface Client {
+  id: string;
   name: string;
   email: string;
   phone: string;
   address: string;
-  taxId: string;
-  logoUri?: string;
 }
