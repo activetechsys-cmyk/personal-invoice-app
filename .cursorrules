@@ -12,4 +12,6 @@
 - Help me review, polish, and debug the code that Hermes generates on its branch.
 
 ## Current Roadmap
-- [ ] Next Feature: [Insert what you want to build next here]
+- [x] PDF Generation: Polished HTML-to-PDF workflow
+- [ ] Feature: Automatic Invoice Numbering (e.g., INV-0001) that increments sequentially.
+- [ ] Feature: Client Profiles directory to save and select existing client details.

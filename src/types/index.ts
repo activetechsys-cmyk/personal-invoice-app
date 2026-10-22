@@ -21,7 +21,6 @@ export interface Invoice {
   invoiceNumber: string;
   clientId: string;
   dateIssued: string;
-  
   items: InvoiceItem[];
   taxRate: number;
   discountRate: number;
@@ -34,4 +33,14 @@ export interface Client {
   email: string;
   phone: string;
   address: string;
+}
+
+export interface InvoiceDraft {
+  client: Client | null;
+  invoiceNumber: string;
+  dateIssued: string;
+  items: InvoiceItem[];
+  taxRate: number;
+  discountRate: number;
+  notes: string;
 }

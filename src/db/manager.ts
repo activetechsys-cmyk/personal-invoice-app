@@ -1,8 +1,49 @@
-
 import * as SQLite from 'expo-sqlite';
 import { BusinessProfile, Client, Invoice, InvoiceItem } from '../types';
 
 const db = SQLite.openDatabaseSync('invoice_app.db');
+
+const INVOICE_PREFIX = 'INV-';
+const INVOICE_PAD = 4;
+
+const EMPTY_PROFILE: BusinessProfile = {
+  name: '',
+  address: '',
+  email: '',
+  phone: '',
+  taxId: '',
+};
+
+export function parseInvoiceSequence(value: string | null | undefined): number {
+  const match = String(value ?? '').match(/(\d+)\s*$/);
+  if (!match) return 0;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function formatInvoiceNumber(sequence: number): string {
+  const n = Math.max(0, Math.floor(Number.isFinite(sequence) ? sequence : 0));
+  return `${INVOICE_PREFIX}${String(n).padStart(INVOICE_PAD, '0')}`;
+}
+
+export function nextInvoiceNumber(last: string | null | undefined): string {
+  return formatInvoiceNumber(parseInvoiceSequence(last) + 1);
+}
+
+type ProfileRow = BusinessProfile & { lastInvoiceNumber?: string | null };
+
+function toProfile(row: ProfileRow | null | undefined): BusinessProfile {
+  if (!row) return { ...EMPTY_PROFILE };
+  return {
+    name: row.name || '',
+    address: row.address || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    taxId: row.taxId || '',
+    logoUri: row.logoUri,
+    signatureUri: row.signatureUri,
+  };
+}
 
 export const DBManager = {
   async init() {
@@ -46,41 +87,81 @@ export const DBManager = {
 
     try {
       await db.execAsync('ALTER TABLE profile ADD COLUMN logoUri TEXT;');
-    } catch (e) { }
+    } catch (e) { /* column already exists */ }
     try {
       await db.execAsync('ALTER TABLE profile ADD COLUMN signatureUri TEXT;');
-    } catch (e) { }
+    } catch (e) { /* column already exists */ }
     try {
       await db.execAsync('ALTER TABLE profile ADD COLUMN lastInvoiceNumber TEXT;');
-    } catch (e) { }
+    } catch (e) { /* column already exists */ }
+    try {
+      await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoiceNumber);');
+    } catch (e) {
+      console.warn('Could not create unique invoice number index:', e);
+    }
   },
 
-  async getProfile(): Promise<BusinessProfile & { lastInvoiceNumber?: string }> {
-    const result = await db.getFirstAsync<{ 
-      name: string, address: string, email: string, phone: string, taxId: string, logoUri: string, signatureUri: string, lastInvoiceNumber: string 
-    }>('SELECT name, address, email, phone, taxId, logoUri, signatureUri, lastInvoiceNumber FROM profile WHERE id = 1');
-    
-    return result || { name: '', address: '', email: '', phone: '', taxId: '' };
+  async getProfile(): Promise<BusinessProfile> {
+    const result = await db.getFirstAsync<ProfileRow>(
+      'SELECT name, address, email, phone, taxId, logoUri, signatureUri, lastInvoiceNumber FROM profile WHERE id = 1'
+    );
+    return toProfile(result);
   },
 
-  async saveProfile(profile: BusinessProfile & { lastInvoiceNumber?: string }) {
+  async saveProfile(profile: BusinessProfile) {
+    const lastInvoiceNumber = await this.getLastInvoiceNumber();
     await db.runAsync(
       'INSERT OR REPLACE INTO profile (id, name, address, email, phone, taxId, logoUri, signatureUri, lastInvoiceNumber) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [profile.name, profile.address, profile.email, profile.phone, profile.taxId, profile.logoUri, profile.signatureUri, profile.lastInvoiceNumber || '000000']
+      [
+        profile.name,
+        profile.address,
+        profile.email,
+        profile.phone,
+        profile.taxId,
+        profile.logoUri ?? null,
+        profile.signatureUri ?? null,
+        lastInvoiceNumber,
+      ]
     );
   },
 
   async getLastInvoiceNumber(): Promise<string> {
-    const result = await db.getFirstAsync<{ lastInvoiceNumber: string }>('SELECT lastInvoiceNumber FROM profile WHERE id = 1');
-    return result?.lastInvoiceNumber || '000000';
+    const result = await db.getFirstAsync<{ lastInvoiceNumber: string | null }>(
+      'SELECT lastInvoiceNumber FROM profile WHERE id = 1'
+    );
+    return formatInvoiceNumber(parseInvoiceSequence(result?.lastInvoiceNumber));
+  },
+
+  async getHighestInvoiceSequence(): Promise<number> {
+    const lastStored = parseInvoiceSequence(await this.getLastInvoiceNumber());
+    const rows = await db.getAllAsync<{ invoiceNumber: string }>('SELECT invoiceNumber FROM invoices');
+    const lastIssued = rows.reduce((max, row) => Math.max(max, parseInvoiceSequence(row.invoiceNumber)), 0);
+    return Math.max(lastStored, lastIssued);
+  },
+
+  async getNextInvoiceNumber(): Promise<string> {
+    return formatInvoiceNumber((await this.getHighestInvoiceSequence()) + 1);
   },
 
   async setLastInvoiceNumber(num: string) {
-    await db.runAsync('UPDATE profile SET lastInvoiceNumber = ? WHERE id = 1', [num]);
+    const normalized = formatInvoiceNumber(parseInvoiceSequence(num));
+    await db.runAsync(
+      `INSERT INTO profile (id, lastInvoiceNumber) VALUES (1, ?)
+       ON CONFLICT(id) DO UPDATE SET lastInvoiceNumber = excluded.lastInvoiceNumber`,
+      [normalized]
+    );
   },
 
   async getClients(): Promise<Client[]> {
-    return await db.getAllAsync<Client>('SELECT * FROM clients');
+    return await db.getAllAsync<Client>('SELECT id, name, email, phone, address FROM clients ORDER BY name COLLATE NOCASE');
+  },
+
+  async getClientById(id: string): Promise<Client | null> {
+    const result = await db.getFirstAsync<Client>(
+      'SELECT id, name, email, phone, address FROM clients WHERE id = ?',
+      [id]
+    );
+    return result ?? null;
   },
 
   async saveClient(client: Client) {
@@ -99,11 +180,11 @@ export const DBManager = {
     if (result) {
       result.items = await this.getItemsForInvoice(result.id);
     }
-    return result;
+    return result ?? null;
   },
 
   async getInvoices(): Promise<Invoice[]> {
-    const invoices = await db.getAllAsync<Invoice>('SELECT * FROM invoices');
+    const invoices = await db.getAllAsync<Invoice>('SELECT * FROM invoices ORDER BY dateIssued DESC, invoiceNumber DESC');
     for (const invoice of invoices) {
       invoice.items = await this.getItemsForInvoice(invoice.id);
     }
@@ -114,39 +195,53 @@ export const DBManager = {
     return await db.getAllAsync<InvoiceItem>('SELECT * FROM invoice_items WHERE invoiceId = ?', [invoiceId]);
   },
 
-  async createInvoice(invoiceData: Omit<Invoice, 'id' | 'items'>, items: InvoiceItem[]): Promise<string> {
+  async createInvoice(
+    invoiceData: Omit<Invoice, 'id' | 'items' | 'invoiceNumber'> & { invoiceNumber?: string },
+    items: InvoiceItem[]
+  ): Promise<{ id: string; invoiceNumber: string }> {
     const id = `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    
+    let invoiceNumber = '';
+
     try {
       await db.withTransactionAsync(async () => {
+        const nextSequence = (await this.getHighestInvoiceSequence()) + 1;
+        invoiceNumber = formatInvoiceNumber(nextSequence);
+
         await db.runAsync(
-          'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO invoices (id, invoiceNumber, clientId, dateIssued, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [
-            String(id), 
-            String(invoiceData.invoiceNumber || ''), 
-            String(invoiceData.clientId || ''), 
-            String(invoiceData.dateIssued || ''), 
-            Number(invoiceData.taxRate) || 0, 
-            Number(invoiceData.discountRate) || 0, 
-            String(invoiceData.notes || '')
+            String(id),
+            invoiceNumber,
+            String(invoiceData.clientId || ''),
+            String(invoiceData.dateIssued || ''),
+            Number(invoiceData.taxRate) || 0,
+            Number(invoiceData.discountRate) || 0,
+            String(invoiceData.notes || ''),
           ]
         );
 
-        for (const item of items) {
-          const freshItemId = `item_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+        await db.runAsync(
+          `INSERT INTO profile (id, lastInvoiceNumber) VALUES (1, ?)
+           ON CONFLICT(id) DO UPDATE SET lastInvoiceNumber = excluded.lastInvoiceNumber`,
+          [invoiceNumber]
+        );
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const freshItemId = `item_${Date.now()}_${i}_${Math.floor(Math.random() * 1000000)}`;
           await db.runAsync(
             'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
             [
-              String(freshItemId), 
-              String(id), 
-              String(item.description || ''), 
-              Number(item.quantity) || 0, 
-              Number(item.unitPrice) || 0
+              String(freshItemId),
+              String(id),
+              String(item.description || ''),
+              Number(item.quantity) || 0,
+              Number(item.unitPrice) || 0,
             ]
           );
         }
       });
-      return id;
+      return { id, invoiceNumber };
     } catch (e) {
       console.error('Database Error during createInvoice:', e);
       throw e;
@@ -158,28 +253,29 @@ export const DBManager = {
       await db.runAsync(
         'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
-          String(invoice.id), 
-          String(invoice.invoiceNumber || ''), 
-          String(invoice.clientId || ''), 
-          String(invoice.dateIssued || ''), 
-          Number(invoice.taxRate) || 0, 
-          Number(invoice.discountRate) || 0, 
-          String(invoice.notes || '')
+          String(invoice.id),
+          String(invoice.invoiceNumber || ''),
+          String(invoice.clientId || ''),
+          String(invoice.dateIssued || ''),
+          Number(invoice.taxRate) || 0,
+          Number(invoice.discountRate) || 0,
+          String(invoice.notes || ''),
         ]
       );
 
       await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [invoice.id]);
 
-      for (const item of invoice.items) {
-        const freshItemId = `item_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+      for (let i = 0; i < invoice.items.length; i++) {
+        const item = invoice.items[i];
+        const freshItemId = `item_${Date.now()}_${i}_${Math.floor(Math.random() * 1000000)}`;
         await db.runAsync(
           'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
           [
-            String(freshItemId), 
-            String(invoice.id), 
-            String(item.description || ''), 
-            Number(item.quantity) || 0, 
-            Number(item.unitPrice) || 0
+            String(freshItemId),
+            String(invoice.id),
+            String(item.description || ''),
+            Number(item.quantity) || 0,
+            Number(item.unitPrice) || 0,
           ]
         );
       }
@@ -188,8 +284,8 @@ export const DBManager = {
 
   async deleteInvoice(id: string) {
     await db.withTransactionAsync(async () => {
-      await db.runAsync('DELETE FROM invoices WHERE id = ?', [id]);
       await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [id]);
+      await db.runAsync('DELETE FROM invoices WHERE id = ?', [id]);
     });
-  }
+  },
 };

@@ -5,15 +5,14 @@ import { TextInput, Button, Text, Menu, Divider } from 'react-native-paper';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 import { DBManager } from '../db/manager';
-import { Client, Invoice } from '../types';
+import { Invoice } from '../types';
 import { InvoiceItemRow } from '../components/InvoiceItemRow';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 
 export const InvoiceScreen = () => {
   const store = useInvoiceStore();
-  const { currentInvoice, profile } = store;
+  const { currentInvoice, profile, clients } = store;
   
-  const [clients, setClients] = useState<Client[]>([]);
   const [previousInvoices, setPreviousInvoices] = useState<Invoice[]>([]);
   const [clientMenuVisible, setClientMenuVisible] = useState(false);
   const [templateMenuVisible, setTemplateMenuVisible] = useState(false);
@@ -22,7 +21,6 @@ export const InvoiceScreen = () => {
   useEffect(() => {
     const init = async () => {
       await store.initializeStore();
-      DBManager.getClients().then(setClients);
       DBManager.getInvoices().then(setPreviousInvoices);
     };
     init();
@@ -41,43 +39,12 @@ export const InvoiceScreen = () => {
     if (!currentInvoice.client) return Alert.alert('Error', 'Please select a client');
     if (currentInvoice.items.length === 0) return Alert.alert('Error', 'Add at least one item');
 
-    const executeSave = async () => {
-      try {
-        await DBManager.createInvoice(
-          { 
-            clientId: currentInvoice.client.id, 
-            invoiceNumber: currentInvoice.invoiceNumber,
-            dateIssued: currentInvoice.dateIssued,
-            taxRate: currentInvoice.taxRate,
-            discountRate: currentInvoice.discountRate,
-            notes: currentInvoice.notes
-          }, 
-          currentInvoice.items
-        );
-        await store.incrementInvoiceNumber();
-        Alert.alert('Success', `Invoice #${currentInvoice.invoiceNumber} saved!`);
-        DBManager.getInvoices().then(setPreviousInvoices);
-      } catch (e) {
-        Alert.alert('Error', 'Failed to save invoice');
-      }
-    };
-
     try {
-      const existing = await DBManager.getInvoiceByNumber(currentInvoice.invoiceNumber);
-      if (existing) {
-        Alert.alert(
-          'Overwrite Warning', 
-          `Invoice #${currentInvoice.invoiceNumber} already exists. Do you want to overwrite it?`, 
-          [
-            { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-            { text: 'Overwrite', onPress: () => executeSave() }
-          ]
-        );
-      } else {
-        await executeSave();
-      }
+      const savedNumber = await store.saveCurrentInvoice();
+      Alert.alert('Success', `Invoice #${savedNumber} saved!`);
+      DBManager.getInvoices().then(setPreviousInvoices);
     } catch (e) {
-      Alert.alert('Error', 'Failed to check existing invoices');
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to save invoice');
     }
   };
 
@@ -86,7 +53,20 @@ export const InvoiceScreen = () => {
     if (currentInvoice.items.length === 0) return Alert.alert('Error', 'Invoice must have items to print');
 
     try {
-      await generateInvoicePDF(profile, { ...currentInvoice, id: '0' }, currentInvoice.client);
+      await generateInvoicePDF(
+        profile,
+        {
+          id: '0',
+          clientId: currentInvoice.client.id,
+          invoiceNumber: currentInvoice.invoiceNumber,
+          dateIssued: currentInvoice.dateIssued,
+          items: currentInvoice.items,
+          taxRate: currentInvoice.taxRate,
+          discountRate: currentInvoice.discountRate,
+          notes: currentInvoice.notes,
+        },
+        currentInvoice.client
+      );
     } catch (e) {
       Alert.alert('Error', 'Failed to generate PDF');
     }
@@ -101,11 +81,7 @@ export const InvoiceScreen = () => {
   };
 
   const applyTemplate = (invoice: Invoice) => {
-    store.setCurrentInvoice({
-      ...invoice,
-      id: '', 
-      invoiceNumber: invoice.invoiceNumber, 
-    });
+    store.applyInvoiceTemplate(invoice);
     setTemplateMenuVisible(false);
   };
 
@@ -159,10 +135,9 @@ export const InvoiceScreen = () => {
           <TextInput 
             label="Invoice #" 
             value={currentInvoice.invoiceNumber} 
-            onChangeText={v => store.updateInvoiceField('invoiceNumber', v)} 
+            readOnly
             mode="outlined" 
             style={styles.input} 
-            error={currentInvoice.invoiceNumber.length !== 6}
           />
           <TextInput 
             label="Date" 

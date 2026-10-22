@@ -2,27 +2,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { TextInput, Button, List, FAB, Portal, Modal, Text } from 'react-native-paper';
-import { DBManager } from '../db/manager';
-import { Client } from '../types';
+import { useInvoiceStore } from '../store/useInvoiceStore';
 
 export const ClientScreen = () => {
-  const [clients, setClients] = useState<Client[]>([]);
+  const { clients, loadClients, saveClient } = useInvoiceStore();
   const [visible, setVisible] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', email: '', phone: '', address: '' });
-
-  const loadClients = async () => {
-    const data = await DBManager.getClients();
-    setClients(data);
-  };
 
   useEffect(() => { loadClients(); }, []);
 
   const handleAddClient = async () => {
     if (!newClient.name) return Alert.alert('Error', 'Name is required');
-    await DBManager.saveClient({ id: Date.now().toString(), ...newClient });
+    await saveClient({ id: Date.now().toString(), ...newClient });
     setNewClient({ name: '', email: '', phone: '', address: '' });
     setVisible(false);
-    loadClients();
   };
 
   return (
@@ -34,7 +27,7 @@ export const ClientScreen = () => {
             key={client.id} 
             title={client.name} 
             description={client.email} 
-            left={p => <List.Icon icon="account" />} 
+            left={p => <List.Icon {...p} icon="account" />} 
           />
         ))}
       </ScrollView>
