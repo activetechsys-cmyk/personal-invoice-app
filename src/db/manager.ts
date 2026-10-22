@@ -95,41 +95,83 @@ export const DBManager = {
   },
 
   async createInvoice(invoiceData: Omit<Invoice, 'id' | 'items'>, items: InvoiceItem[]): Promise<string> {
-    const id = Date.now().toString();
+    const id = `inv_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     
-    await db.runAsync(
-      'INSERT INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, invoiceData.invoiceNumber, invoiceData.clientId, invoiceData.dateIssued, invoiceData.dateDue, invoiceData.taxRate, invoiceData.discountRate, invoiceData.notes]
-    );
+    try {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            String(id), 
+            String(invoiceData.invoiceNumber || ''), 
+            String(invoiceData.clientId || ''), 
+            String(invoiceData.dateIssued || ''), 
+            String(invoiceData.dateDue || ''), 
+            Number(invoiceData.taxRate) || 0, 
+            Number(invoiceData.discountRate) || 0, 
+            String(invoiceData.notes || '')
+          ]
+        );
 
-    for (const item of items) {
-      await db.runAsync(
-        'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
-        [item.id, id, item.description, item.quantity, item.unitPrice]
-      );
+        for (const item of items) {
+          const freshItemId = `item_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+          await db.runAsync(
+            'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
+            [
+              String(freshItemId), 
+              String(id), 
+              String(item.description || ''), 
+              Number(item.quantity) || 0, 
+              Number(item.unitPrice) || 0
+            ]
+          );
+        }
+      });
+      return id;
+    } catch (e) {
+      console.error('Database Error during createInvoice:', e);
+      throw e;
     }
-    
-    return id;
   },
 
   async saveInvoice(invoice: Invoice) {
-    await db.runAsync(
-      'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [invoice.id, invoice.invoiceNumber, invoice.clientId, invoice.dateIssued, invoice.dateDue, invoice.taxRate, invoice.discountRate, invoice.notes]
-    );
-
-    await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [invoice.id]);
-
-    for (const item of invoice.items) {
+    await db.withTransactionAsync(async () => {
       await db.runAsync(
-        'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
-        [item.id, invoice.id, item.description, item.quantity, item.unitPrice]
+        'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          String(invoice.id), 
+          String(invoice.invoiceNumber || ''), 
+          String(invoice.clientId || ''), 
+          String(invoice.dateIssued || ''), 
+          String(invoice.dateDue || ''), 
+          Number(invoice.taxRate) || 0, 
+          Number(invoice.discountRate) || 0, 
+          String(invoice.notes || '')
+        ]
       );
-    }
+
+      await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [invoice.id]);
+
+      for (const item of invoice.items) {
+        const freshItemId = `item_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+        await db.runAsync(
+          'INSERT INTO invoice_items (id, invoiceId, description, quantity, unitPrice) VALUES (?, ?, ?, ?, ?)',
+          [
+            String(freshItemId), 
+            String(invoice.id), 
+            String(item.description || ''), 
+            Number(item.quantity) || 0, 
+            Number(item.unitPrice) || 0
+          ]
+        );
+      }
+    });
   },
 
   async deleteInvoice(id: string) {
-    await db.runAsync('DELETE FROM invoices WHERE id = ?', [id]);
-    await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [id]);
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM invoices WHERE id = ?', [id]);
+      await db.runAsync('DELETE FROM invoice_items WHERE invoiceId = ?', [id]);
+    });
   }
 };

@@ -18,9 +18,9 @@ export default function App() {
   if (!initialized) return <View style={styles.center}><Text>Initializing Database...</Text></View>;
 
   const routes = [
-    { key: 'invoice', title: 'Invoice', component: <InvoiceScreen /> },
-    { key: 'clients', title: 'Clients', component: <ClientScreen /> },
-    { key: 'settings', title: 'Settings', component: <SettingsScreen /> },
+    { key: 'invoice', title: 'Invoice', icon: '📄', component: <InvoiceScreen /> },
+    { key: 'clients', title: 'Clients', icon: '👥', component: <ClientScreen /> },
+    { key: 'settings', title: 'Settings', icon: '⚙️', component: <SettingsScreen /> },
   ];
 
   const renderScene = routes[index].component;
@@ -36,6 +36,9 @@ export default function App() {
               style={[styles.tabItem, index === i && styles.activeTab]} 
               onPress={() => setIndex(i)}
             >
+              <Text style={[styles.tabIcon, index === i && styles.activeTabText]}>
+                {route.icon}
+              </Text>
               <Text style={[styles.tabText, index === i && styles.activeTabText]}>
                 {route.title}
               </Text>
@@ -53,7 +56,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tabBar: { 
     flexDirection: 'row', 
-    height: 60, 
+    height: 65, 
     borderTopWidth: 1, 
     borderTopColor: '#eee', 
     backgroundColor: '#fff',
@@ -69,8 +72,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 3,
     borderTopColor: '#3F51B5'
   },
+  tabIcon: { 
+    fontSize: 20, 
+    marginBottom: 2,
+    color: '#666' 
+  },
   tabText: { 
-    fontSize: 12, 
+    fontSize: 10, 
     color: '#666' 
   },
   activeTabText: { 

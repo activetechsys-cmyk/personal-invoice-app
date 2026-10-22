@@ -1,13 +1,14 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import { Invoice, Client, BusinessProfile } from '../types';
 
 const getBase64 = async (uri?: string) => {
   if (!uri) return '';
   try {
-    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const file = new File(uri);
+    const base64 = await file.readAsStringAsync({ encoding: 'base64' });
     return `data:image/png;base64,${base64}`;
   } catch (e) {
     console.error('Error reading image:', e);

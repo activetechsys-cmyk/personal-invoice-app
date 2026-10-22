@@ -16,6 +16,7 @@ interface InvoiceState {
   };
   setProfile: (profile: BusinessProfile) => void;
   setCurrentClient: (client: Client) => void;
+  setCurrentInvoice: (invoice: any) => void;
   updateInvoiceField: (field: string, value: any) => void;
   addItem: () => void;
   updateItem: (index: number, field: keyof InvoiceItem, value: any) => void;
@@ -33,7 +34,7 @@ export const useInvoiceStore = create<InvoiceState>((set) => ({
   },
   currentInvoice: {
     client: null,
-    invoiceNumber: '',
+    invoiceNumber: '000001',
     dateIssued: new Date().toISOString().split('T')[0],
     dateDue: '',
     items: [],
@@ -45,13 +46,16 @@ export const useInvoiceStore = create<InvoiceState>((set) => ({
   setCurrentClient: (client) => set((state) => ({
     currentInvoice: { ...state.currentInvoice, client }
   })),
+  setCurrentInvoice: (invoice) => set((state) => ({
+    currentInvoice: { ...invoice }
+  })),
   updateInvoiceField: (field, value) => set((state) => ({
     currentInvoice: { ...state.currentInvoice, [field]: value }
   })),
   addItem: () => set((state) => ({
     currentInvoice: {
       ...state.currentInvoice,
-      items: [...state.currentInvoice.items, { description: '', quantity: 1, unitPrice: 0 }]
+      items: [...state.currentInvoice.items, { id: Date.now().toString(), description: '', quantity: 1, unitPrice: 0 }]
     }
   })),
   updateItem: (index, field, value) => set((state) => {
@@ -67,16 +71,20 @@ export const useInvoiceStore = create<InvoiceState>((set) => ({
       items: state.currentInvoice.items.filter((_, i) => i !== index)
     }
   })),
-  resetInvoice: () => set({
-    currentInvoice: {
-      client: null,
-      invoiceNumber: '',
-      dateIssued: new Date().toISOString().split('T')[0],
-      dateDue: '',
-      items: [],
-      taxRate: 0,
-      discountRate: 0,
-      notes: '',
-    }
+  resetInvoice: () => set((state) => {
+    const lastInv = state.currentInvoice.invoiceNumber;
+    const nextNum = parseInt(lastInv) + 1 || 1;
+    return {
+      currentInvoice: {
+        client: null,
+        invoiceNumber: nextNum.toString().padStart(6, '0'),
+        dateIssued: new Date().toISOString().split('T')[0],
+        dateDue: '',
+        items: [],
+        taxRate: 0,
+        discountRate: 0,
+        notes: '',
+      }
+    };
   })
 }));

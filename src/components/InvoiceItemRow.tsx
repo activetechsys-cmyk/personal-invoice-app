@@ -1,63 +1,85 @@
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { TextInput, IconButton, Text } from 'react-native-paper';
+import { View, StyleSheet, Text } from 'react-native';
+import { TextInput } from 'react-native-paper';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 
 export const InvoiceItemRow = ({ index }: { index: number }) => {
-  const { currentInvoice, updateItem, removeItem } = useInvoiceStore();
+  const { currentInvoice, updateItem } = useInvoiceStore();
   const item = currentInvoice.items[index];
+
+  const handleChange = (field: string, value: any) => {
+    // Fix: call store action with (index, field, value)
+    updateItem(index, field, value);
+  };
 
   return (
     <View style={styles.row}>
       <TextInput
         label="Description"
-        mode="outlined"
         value={item.description}
-        onChangeText={(val) => updateItem(index, 'description', val)}
-        style={styles.desc}
+        onChangeText={v => handleChange('description', v)}
+        mode="flat"
+        style={styles.descInput}
+        dense
       />
       <TextInput
         label="Qty"
-        mode="outlined"
         value={String(item.quantity)}
+        onChangeText={v => handleChange('quantity', parseFloat(v) || 0)}
+        mode="flat"
         keyboardType="numeric"
-        onChangeText={(val) => updateItem(index, 'quantity', parseFloat(val) || 0)}
-        style={styles.qty}
+        style={styles.qtyInput}
+        dense
       />
       <TextInput
         label="Price"
-        mode="outlined"
         value={String(item.unitPrice)}
+        onChangeText={v => handleChange('unitPrice', parseFloat(v) || 0)}
+        mode="flat"
         keyboardType="numeric"
-        onChangeText={(val) => updateItem(index, 'unitPrice', parseFloat(val) || 0)}
-        style={styles.price}
+        style={styles.priceInput}
+        dense
       />
-      <Text style={styles.total}>
-        ${(item.quantity * item.unitPrice).toFixed(2)}
-      </Text>
-      <IconButton 
-        icon="delete" 
-        onPress={() => removeItem(index)} 
-        iconColor="red" 
-      />
+      <View style={styles.totalContainer}>
+        <Text style={styles.totalText}>
+          ${(item.quantity * item.unitPrice).toFixed(2)}
+        </Text>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+  row: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    marginBottom: 10 
   },
-  desc: { flex: 3 },
-  qty: { flex: 1 },
-  price: { flex: 1 },
-  total: {
-    fontWeight: 'bold',
-    minWidth: 60,
-    textAlign: 'right',
+  descInput: { 
+    flex: 3, 
+    fontSize: 13,
+    height: 40
+  },
+  qtyInput: { 
+    flex: 0.5, 
+    fontSize: 13,
+    height: 40 
+  },
+  priceInput: { 
+    flex: 1, 
+    fontSize: 13,
+    height: 40 
+  },
+  totalContainer: { 
+    flex: 0.8, 
+    justifyContent: 'center', 
+    alignItems: 'flex-end' 
+  },
+  totalText: { 
+    fontSize: 13, 
+    fontWeight: 'bold', 
+    color: '#3F51B5' 
   },
 });

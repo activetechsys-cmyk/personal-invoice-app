@@ -4,17 +4,22 @@ import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { TextInput, Button, Text, Menu, Divider } from 'react-native-paper';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 import { DBManager } from '../db/manager';
-import { Client } from '../types';
+import { Client, Invoice } from '../types';
 import { InvoiceItemRow } from '../components/InvoiceItemRow';
 import { generateInvoicePDF } from '../utils/pdfGenerator';
 
 export const InvoiceScreen = () => {
-  const { currentInvoice, updateInvoiceField, addItem, profile } = useInvoiceStore();
+  const store = useInvoiceStore();
+  const { currentInvoice, profile } = store;
+  
   const [clients, setClients] = useState<Client[]>([]);
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [previousInvoices, setPreviousInvoices] = useState<Invoice[]>([]);
+  const [clientMenuVisible, setClientMenuVisible] = useState(false);
+  const [templateMenuVisible, setTemplateMenuVisible] = useState(false);
 
   useEffect(() => {
     DBManager.getClients().then(setClients);
+    DBManager.getInvoices().then(setPreviousInvoices);
   }, []);
 
   const calculateTotals = () => {
@@ -43,7 +48,8 @@ export const InvoiceScreen = () => {
         }, 
         currentInvoice.items
       );
-      Alert.alert('Success', `Invoice #${currentInvoice.invoiceNumber} saved with ID ${id}`);
+      Alert.alert('Success', `Invoice #${currentInvoice.invoiceNumber} saved!`);
+      DBManager.getInvoices().then(setPreviousInvoices);
     } catch (e) {
       Alert.alert('Error', 'Failed to save invoice');
     }
@@ -54,10 +60,19 @@ export const InvoiceScreen = () => {
     if (currentInvoice.items.length === 0) return Alert.alert('Error', 'Invoice must have items to print');
 
     try {
-      await generateInvoicePDF(profile, { ...currentInvoice, id: 0 }, currentInvoice.client);
+      await generateInvoicePDF(profile, { ...currentInvoice, id: '0' }, currentInvoice.client);
     } catch (e) {
       Alert.alert('Error', 'Failed to generate PDF');
     }
+  };
+
+  const applyTemplate = (invoice: Invoice) => {
+    store.setCurrentInvoice({
+      ...invoice,
+      id: '',
+      invoiceNumber: '', 
+    });
+    setTemplateMenuVisible(false);
   };
 
   return (
@@ -65,26 +80,50 @@ export const InvoiceScreen = () => {
       <Text variant="headlineMedium" style={styles.title}>New Invoice</Text>
 
       <View style={styles.section}>
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={
-            <Button mode="outlined" onPress={() => setMenuVisible(true)} style={styles.clientBtn}>
-              {currentInvoice.client ? `Client: ${currentInvoice.client.name}` : 'Select Client'}
-            </Button>
-          }
-        >
-          {clients.map(c => (
-            <Menu.Item key={c.id} onPress={() => {
-              useInvoiceStore.getState().setCurrentClient(c);
-              setMenuVisible(false);
-            }} title={c.name} />
-          ))}
-        </Menu>
+        <View style={styles.topRow}>
+          <Menu
+            visible={clientMenuVisible}
+            onDismiss={() => setClientMenuVisible(false)}
+            anchor={
+              <Button mode="outlined" onPress={() => setClientMenuVisible(true)} style={styles.clientBtn}>
+                {currentInvoice.client ? `Client: ${currentInvoice.client.name}` : 'Select Client'}
+              </Button>
+            }
+          >
+            {clients.map(c => (
+              <Menu.Item key={c.id} onPress={() => {
+                store.setCurrentClient(c);
+                setClientMenuVisible(false);
+              }} title={c.name} />
+            ))}
+          </Menu>
+
+          <Menu
+            visible={templateMenuVisible}
+            onDismiss={() => setTemplateMenuVisible(false)}
+            anchor={
+              <Button mode="outlined" onPress={() => setTemplateMenuVisible(true)} style={styles.templateBtn}>
+                Template 📄
+              </Button>
+            }
+          >
+            {previousInvoices.length === 0 ? (
+              <Menu.Item title="No previous invoices" disabled />
+            ) : (
+              previousInvoices.map(inv => (
+                <Menu.Item 
+                  key={inv.id} 
+                  onPress={() => applyTemplate(inv)} 
+                  title={`Inv #${inv.invoiceNumber}`} 
+                />
+              ))
+            )}
+          </Menu>
+        </View>
 
         <View style={styles.grid}>
-          <TextInput label="Invoice #" value={currentInvoice.invoiceNumber} onChangeText={v => updateInvoiceField('invoiceNumber', v)} mode="outlined" style={styles.input} />
-          <TextInput label="Due Date" value={currentInvoice.dateDue} onChangeText={v => updateInvoiceField('dateDue', v)} mode="outlined" style={styles.input} />
+          <TextInput label="Invoice #" value={currentInvoice.invoiceNumber} onChangeText={v => store.updateInvoiceField('invoiceNumber', v)} mode="outlined" style={styles.input} />
+          <TextInput label="Due Date" value={currentInvoice.dateDue} onChangeText={v => store.updateInvoiceField('dateDue', v)} mode="outlined" style={styles.input} />
         </View>
       </View>
 
@@ -93,7 +132,7 @@ export const InvoiceScreen = () => {
       <View style={styles.section}>
         <Text variant="titleMedium" style={styles.sectionTitle}>Line Items</Text>
         {currentInvoice.items.map((_, i) => <InvoiceItemRow key={i} index={i} />)}
-        <Button icon="plus" mode="text" onPress={addItem} style={styles.addItemBtn}>Add Item</Button>
+        <Button icon="plus" mode="text" onPress={store.addItem} style={styles.addItemBtn}>Add Item</Button>
       </View>
 
       <View style={styles.footer}>
@@ -102,11 +141,11 @@ export const InvoiceScreen = () => {
           <Text style={styles.bold}>${subtotal.toFixed(2)}</Text>
         </View>
         <View style={styles.calcRow}>
-          <TextInput label="Tax %" value={String(currentInvoice.taxRate)} keyboardType="numeric" onChangeText={v => updateInvoiceField('taxRate', parseFloat(v) || 0)} mode="flat" style={styles.smallInput} />
+          <TextInput label="Tax %" value={String(currentInvoice.taxRate)} keyboardType="numeric" onChangeText={v => store.updateInvoiceField('taxRate', parseFloat(v) || 0)} mode="flat" style={styles.smallInput} />
           <Text style={styles.bold}>${tax.toFixed(2)}</Text>
         </View>
         <View style={styles.calcRow}>
-          <TextInput label="Discount %" value={String(currentInvoice.discountRate)} keyboardType="numeric" onChangeText={v => updateInvoiceField('discountRate', parseFloat(v) || 0)} mode="flat" style={styles.smallInput} />
+          <TextInput label="Discount %" value={String(currentInvoice.discountRate)} keyboardType="numeric" onChangeText={v => store.updateInvoiceField('discountRate', parseFloat(v) || 0)} mode="flat" style={styles.smallInput} />
           <Text style={styles.bold}>-${discount.toFixed(2)}</Text>
         </View>
         <Divider style={styles.divider} />
@@ -130,9 +169,11 @@ const styles = StyleSheet.create({
   title: { marginBottom: 20, fontWeight: 'bold', color: '#3F51B5' },
   section: { marginBottom: 24 },
   sectionTitle: { marginBottom: 12, fontWeight: 'bold' },
+  topRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   grid: { flexDirection: 'row', gap: 12, marginTop: 12 },
   input: { flex: 1 },
-  clientBtn: { width: '100%', justifyContent: 'flex-start' },
+  clientBtn: { flex: 1, justifyContent: 'flex-start' },
+  templateBtn: { flex: 1, justifyContent: 'flex-start' },
   divider: { marginVertical: 16 },
   addItemBtn: { alignSelf: 'flex-start' },
   footer: { backgroundColor: '#f9f9f9', padding: 16, borderRadius: 12, marginTop: 20 },
