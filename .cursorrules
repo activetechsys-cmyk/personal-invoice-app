@@ -1,0 +1,15 @@
+# Project Rules & Blueprint
+
+## App Definition
+- We are building a web application using our existing project stack in Omarchy Quattro.
+
+## Rules for Hermes (Background Agent)
+- Read this file before beginning work to check the current Roadmap status.
+- Always create a new git branch for any major feature request.
+- Do not commit directly to the 'main' branch.
+
+## Rules for Cursor (Editor AI)
+- Help me review, polish, and debug the code that Hermes generates on its branch.
+
+## Current Roadmap
+- [ ] Next Feature: [Insert what you want to build next here]

@@ -1,6 +1,7 @@
 
 import { create } from 'zustand';
 import { Invoice, InvoiceItem, Client, BusinessProfile } from '../types';
+import { DBManager } from '../db/manager';
 
 interface InvoiceState {
   profile: BusinessProfile;
@@ -8,7 +9,6 @@ interface InvoiceState {
     client: Client | null;
     invoiceNumber: string;
     dateIssued: string;
-    dateDue: string;
     items: InvoiceItem[];
     taxRate: number;
     discountRate: number;
@@ -22,9 +22,11 @@ interface InvoiceState {
   updateItem: (index: number, field: keyof InvoiceItem, value: any) => void;
   removeItem: (index: number) => void;
   resetInvoice: () => void;
+  initializeStore: () => Promise<void>;
+  incrementInvoiceNumber: () => Promise<void>;
 }
 
-export const useInvoiceStore = create<InvoiceState>((set) => ({
+export const useInvoiceStore = create<InvoiceState>((set, get) => ({
   profile: {
     name: 'My Business',
     email: 'contact@business.com',
@@ -36,7 +38,6 @@ export const useInvoiceStore = create<InvoiceState>((set) => ({
     client: null,
     invoiceNumber: '000001',
     dateIssued: new Date().toISOString().split('T')[0],
-    dateDue: '',
     items: [],
     taxRate: 0,
     discountRate: 0,
@@ -71,20 +72,37 @@ export const useInvoiceStore = create<InvoiceState>((set) => ({
       items: state.currentInvoice.items.filter((_, i) => i !== index)
     }
   })),
-  resetInvoice: () => set((state) => {
-    const lastInv = state.currentInvoice.invoiceNumber;
-    const nextNum = parseInt(lastInv) + 1 || 1;
-    return {
+  resetInvoice: async () => {
+    const lastNum = await DBManager.getLastInvoiceNumber();
+    const nextNum = (parseInt(lastNum) + 1 || 1).toString().padStart(6, '0');
+    set({
       currentInvoice: {
         client: null,
-        invoiceNumber: nextNum.toString().padStart(6, '0'),
+        invoiceNumber: nextNum,
         dateIssued: new Date().toISOString().split('T')[0],
-        dateDue: '',
         items: [],
         taxRate: 0,
         discountRate: 0,
         notes: '',
       }
-    };
-  })
+    });
+  },
+  incrementInvoiceNumber: async () => {
+    const currentNum = get().currentInvoice.invoiceNumber;
+    await DBManager.setLastInvoiceNumber(currentNum);
+  },
+  initializeStore: async () => {
+    const profile = await DBManager.getProfile();
+    const lastNum = await DBManager.getLastInvoiceNumber();
+    const nextNum = (parseInt(lastNum) + 1 || 1).toString().padStart(6, '0');
+    
+    set({ 
+      profile,
+      currentInvoice: {
+        ...get().currentInvoice,
+        invoiceNumber: nextNum,
+        dateIssued: new Date().toISOString().split('T')[0],
+      }
+    });
+  }
 }));

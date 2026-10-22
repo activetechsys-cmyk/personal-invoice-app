@@ -15,7 +15,8 @@ export const DBManager = {
         phone TEXT, 
         taxId TEXT,
         logoUri TEXT,
-        signatureUri TEXT
+        signatureUri TEXT,
+        lastInvoiceNumber TEXT
       );
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY, 
@@ -29,7 +30,6 @@ export const DBManager = {
         invoiceNumber TEXT, 
         clientId TEXT, 
         dateIssued TEXT, 
-        dateDue TEXT, 
         taxRate REAL, 
         discountRate REAL, 
         notes TEXT
@@ -50,21 +50,33 @@ export const DBManager = {
     try {
       await db.execAsync('ALTER TABLE profile ADD COLUMN signatureUri TEXT;');
     } catch (e) { }
+    try {
+      await db.execAsync('ALTER TABLE profile ADD COLUMN lastInvoiceNumber TEXT;');
+    } catch (e) { }
   },
 
-  async getProfile(): Promise<BusinessProfile> {
+  async getProfile(): Promise<BusinessProfile & { lastInvoiceNumber?: string }> {
     const result = await db.getFirstAsync<{ 
-      name: string, address: string, email: string, phone: string, taxId: string, logoUri: string, signatureUri: string 
-    }>('SELECT name, address, email, phone, taxId, logoUri, signatureUri FROM profile WHERE id = 1');
+      name: string, address: string, email: string, phone: string, taxId: string, logoUri: string, signatureUri: string, lastInvoiceNumber: string 
+    }>('SELECT name, address, email, phone, taxId, logoUri, signatureUri, lastInvoiceNumber FROM profile WHERE id = 1');
     
     return result || { name: '', address: '', email: '', phone: '', taxId: '' };
   },
 
-  async saveProfile(profile: BusinessProfile) {
+  async saveProfile(profile: BusinessProfile & { lastInvoiceNumber?: string }) {
     await db.runAsync(
-      'INSERT OR REPLACE INTO profile (id, name, address, email, phone, taxId, logoUri, signatureUri) VALUES (1, ?, ?, ?, ?, ?, ?, ?)',
-      [profile.name, profile.address, profile.email, profile.phone, profile.taxId, profile.logoUri, profile.signatureUri]
+      'INSERT OR REPLACE INTO profile (id, name, address, email, phone, taxId, logoUri, signatureUri, lastInvoiceNumber) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [profile.name, profile.address, profile.email, profile.phone, profile.taxId, profile.logoUri, profile.signatureUri, profile.lastInvoiceNumber || '000000']
     );
+  },
+
+  async getLastInvoiceNumber(): Promise<string> {
+    const result = await db.getFirstAsync<{ lastInvoiceNumber: string }>('SELECT lastInvoiceNumber FROM profile WHERE id = 1');
+    return result?.lastInvoiceNumber || '000000';
+  },
+
+  async setLastInvoiceNumber(num: string) {
+    await db.runAsync('UPDATE profile SET lastInvoiceNumber = ? WHERE id = 1', [num]);
   },
 
   async getClients(): Promise<Client[]> {
@@ -80,6 +92,14 @@ export const DBManager = {
 
   async deleteClient(id: string) {
     await db.runAsync('DELETE FROM clients WHERE id = ?', [id]);
+  },
+
+  async getInvoiceByNumber(num: string): Promise<Invoice | null> {
+    const result = await db.getFirstAsync<Invoice>('SELECT * FROM invoices WHERE invoiceNumber = ?', [num]);
+    if (result) {
+      result.items = await this.getItemsForInvoice(result.id);
+    }
+    return result;
   },
 
   async getInvoices(): Promise<Invoice[]> {
@@ -100,13 +120,12 @@ export const DBManager = {
     try {
       await db.withTransactionAsync(async () => {
         await db.runAsync(
-          'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [
             String(id), 
             String(invoiceData.invoiceNumber || ''), 
             String(invoiceData.clientId || ''), 
             String(invoiceData.dateIssued || ''), 
-            String(invoiceData.dateDue || ''), 
             Number(invoiceData.taxRate) || 0, 
             Number(invoiceData.discountRate) || 0, 
             String(invoiceData.notes || '')
@@ -137,13 +156,12 @@ export const DBManager = {
   async saveInvoice(invoice: Invoice) {
     await db.withTransactionAsync(async () => {
       await db.runAsync(
-        'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, dateDue, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO invoices (id, invoiceNumber, clientId, dateIssued, taxRate, discountRate, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
           String(invoice.id), 
           String(invoice.invoiceNumber || ''), 
           String(invoice.clientId || ''), 
           String(invoice.dateIssued || ''), 
-          String(invoice.dateDue || ''), 
           Number(invoice.taxRate) || 0, 
           Number(invoice.discountRate) || 0, 
           String(invoice.notes || '')

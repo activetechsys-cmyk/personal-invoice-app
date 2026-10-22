@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
 import { TextInput, Button, Text, Menu, Divider } from 'react-native-paper';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 import { DBManager } from '../db/manager';
 import { Client, Invoice } from '../types';
@@ -16,10 +17,15 @@ export const InvoiceScreen = () => {
   const [previousInvoices, setPreviousInvoices] = useState<Invoice[]>([]);
   const [clientMenuVisible, setClientMenuVisible] = useState(false);
   const [templateMenuVisible, setTemplateMenuVisible] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    DBManager.getClients().then(setClients);
-    DBManager.getInvoices().then(setPreviousInvoices);
+    const init = async () => {
+      await store.initializeStore();
+      DBManager.getClients().then(setClients);
+      DBManager.getInvoices().then(setPreviousInvoices);
+    };
+    init();
   }, []);
 
   const calculateTotals = () => {
@@ -35,23 +41,43 @@ export const InvoiceScreen = () => {
     if (!currentInvoice.client) return Alert.alert('Error', 'Please select a client');
     if (currentInvoice.items.length === 0) return Alert.alert('Error', 'Add at least one item');
 
+    const executeSave = async () => {
+      try {
+        await DBManager.createInvoice(
+          { 
+            clientId: currentInvoice.client.id, 
+            invoiceNumber: currentInvoice.invoiceNumber,
+            dateIssued: currentInvoice.dateIssued,
+            taxRate: currentInvoice.taxRate,
+            discountRate: currentInvoice.discountRate,
+            notes: currentInvoice.notes
+          }, 
+          currentInvoice.items
+        );
+        await store.incrementInvoiceNumber();
+        Alert.alert('Success', `Invoice #${currentInvoice.invoiceNumber} saved!`);
+        DBManager.getInvoices().then(setPreviousInvoices);
+      } catch (e) {
+        Alert.alert('Error', 'Failed to save invoice');
+      }
+    };
+
     try {
-      const id = await DBManager.createInvoice(
-        { 
-          clientId: currentInvoice.client.id, 
-          invoiceNumber: currentInvoice.invoiceNumber,
-          dateIssued: currentInvoice.dateIssued,
-          dateDue: currentInvoice.dateDue,
-          taxRate: currentInvoice.taxRate,
-          discountRate: currentInvoice.discountRate,
-          notes: currentInvoice.notes
-        }, 
-        currentInvoice.items
-      );
-      Alert.alert('Success', `Invoice #${currentInvoice.invoiceNumber} saved!`);
-      DBManager.getInvoices().then(setPreviousInvoices);
+      const existing = await DBManager.getInvoiceByNumber(currentInvoice.invoiceNumber);
+      if (existing) {
+        Alert.alert(
+          'Overwrite Warning', 
+          `Invoice #${currentInvoice.invoiceNumber} already exists. Do you want to overwrite it?`, 
+          [
+            { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+            { text: 'Overwrite', onPress: () => executeSave() }
+          ]
+        );
+      } else {
+        await executeSave();
+      }
     } catch (e) {
-      Alert.alert('Error', 'Failed to save invoice');
+      Alert.alert('Error', 'Failed to check existing invoices');
     }
   };
 
@@ -66,11 +92,19 @@ export const InvoiceScreen = () => {
     }
   };
 
+  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const dateString = selectedDate.toISOString().split('T')[0];
+      store.updateInvoiceField('dateIssued', dateString);
+    }
+  };
+
   const applyTemplate = (invoice: Invoice) => {
     store.setCurrentInvoice({
       ...invoice,
-      id: '',
-      invoiceNumber: '', 
+      id: '', 
+      invoiceNumber: invoice.invoiceNumber, 
     });
     setTemplateMenuVisible(false);
   };
@@ -122,10 +156,33 @@ export const InvoiceScreen = () => {
         </View>
 
         <View style={styles.grid}>
-          <TextInput label="Invoice #" value={currentInvoice.invoiceNumber} onChangeText={v => store.updateInvoiceField('invoiceNumber', v)} mode="outlined" style={styles.input} />
-          <TextInput label="Due Date" value={currentInvoice.dateDue} onChangeText={v => store.updateInvoiceField('dateDue', v)} mode="outlined" style={styles.input} />
+          <TextInput 
+            label="Invoice #" 
+            value={currentInvoice.invoiceNumber} 
+            onChangeText={v => store.updateInvoiceField('invoiceNumber', v)} 
+            mode="outlined" 
+            style={styles.input} 
+            error={currentInvoice.invoiceNumber.length !== 6}
+          />
+          <TextInput 
+            label="Date" 
+            value={currentInvoice.dateIssued} 
+            readOnly 
+            onPressIn={() => setShowDatePicker(true)}
+            mode="outlined" 
+            style={styles.input} 
+          />
         </View>
       </View>
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={new Date(currentInvoice.dateIssued)}
+          mode="date"
+          display="default"
+          onChange={onDateChange}
+        />
+      )}
 
       <Divider style={styles.divider} />
       

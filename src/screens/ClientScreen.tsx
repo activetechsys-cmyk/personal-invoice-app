@@ -19,7 +19,7 @@ export const ClientScreen = () => {
 
   const handleAddClient = async () => {
     if (!newClient.name) return Alert.alert('Error', 'Name is required');
-    await DBManager.addClient(newClient);
+    await DBManager.saveClient({ id: Date.now().toString(), ...newClient });
     setNewClient({ name: '', email: '', phone: '', address: '' });
     setVisible(false);
     loadClients();

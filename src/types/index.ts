@@ -21,7 +21,7 @@ export interface Invoice {
   invoiceNumber: string;
   clientId: string;
   dateIssued: string;
-  dateDue: string;
+  
   items: InvoiceItem[];
   taxRate: number;
   discountRate: number;
