@@ -2,13 +2,14 @@
 import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { TextInput } from 'react-native-paper';
+import { InvoiceItem } from '../types';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 
 export const InvoiceItemRow = ({ index }: { index: number }) => {
   const { currentInvoice, updateItem } = useInvoiceStore();
   const item = currentInvoice.items[index];
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: keyof InvoiceItem, value: any) => {
     // Fix: call store action with (index, field, value)
     updateItem(index, field, value);
   };

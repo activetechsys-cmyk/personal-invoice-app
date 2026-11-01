@@ -14,7 +14,7 @@ interface InvoiceState {
     value: InvoiceDraft[K]
   ) => void;
   addItem: () => void;
-  updateItem: <K extends keyof InvoiceItem>(index: number, field: K, value: InvoiceItem[K]) => void;
+  updateItem: (index: number, field: keyof InvoiceItem, value: any) => void,
   removeItem: (index: number) => void;
   resetInvoice: () => Promise<void>;
   initializeStore: () => Promise<void>;

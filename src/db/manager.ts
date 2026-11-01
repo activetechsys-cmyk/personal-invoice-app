@@ -94,6 +94,20 @@ export const DBManager = {
     try {
       await db.execAsync('ALTER TABLE profile ADD COLUMN lastInvoiceNumber TEXT;');
     } catch (e) { /* column already exists */ }
+
+    try {
+      await db.execAsync(`
+        DELETE FROM invoices 
+        WHERE id NOT IN (
+          SELECT MIN(id) 
+          FROM invoices 
+          GROUP BY invoiceNumber
+        );
+      `);
+    } catch (e) {
+      console.warn('Duplicate cleanup failed:', e);
+    }
+
     try {
       await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoiceNumber);');
     } catch (e) {

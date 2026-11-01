@@ -7,7 +7,7 @@ import { useInvoiceStore } from '../store/useInvoiceStore';
 import { DBManager } from '../db/manager';
 import { Invoice } from '../types';
 import { InvoiceItemRow } from '../components/InvoiceItemRow';
-import { generateInvoicePDF } from '../utils/pdfGenerator';
+import { exportInvoiceAsPDF } from '../utils/pdfExport';
 
 export const InvoiceScreen = () => {
   const store = useInvoiceStore();
@@ -53,22 +53,9 @@ export const InvoiceScreen = () => {
     if (currentInvoice.items.length === 0) return Alert.alert('Error', 'Invoice must have items to print');
 
     try {
-      await generateInvoicePDF(
-        profile,
-        {
-          id: '0',
-          clientId: currentInvoice.client.id,
-          invoiceNumber: currentInvoice.invoiceNumber,
-          dateIssued: currentInvoice.dateIssued,
-          items: currentInvoice.items,
-          taxRate: currentInvoice.taxRate,
-          discountRate: currentInvoice.discountRate,
-          notes: currentInvoice.notes,
-        },
-        currentInvoice.client
-      );
+      await exportInvoiceAsPDF(currentInvoice);
     } catch (e) {
-      Alert.alert('Error', 'Failed to generate PDF');
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to generate PDF');
     }
   };
 

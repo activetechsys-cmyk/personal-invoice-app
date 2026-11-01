@@ -21,10 +21,10 @@ export interface Invoice {
   invoiceNumber: string;
   clientId: string;
   dateIssued: string;
-  items: InvoiceItem[];
   taxRate: number;
   discountRate: number;
   notes: string;
+  items: InvoiceItem[];
 }
 
 export interface Client {
